@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trailer Player</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      display: grid;
+      place-items: center;
+    }
+
+    .wrap {
+      width: min(95vw, 900px);
+      text-align: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .player-box {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      margin-top: 16px;
+    }
+
+    button {
+      font-size: 18px;
+      padding: 14px 22px;
+      border-radius: 12px;
+      border: 0;
+      cursor: pointer;
+    }
+
+    .hint {
+      opacity: 0.8;
+      margin-top: 12px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <button id="startBtn">Clip starten</button>
+    <div class="hint">Der Clip läuft nur kurz.</div>
+    <div id="player" class="player-box"></div>
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+
+    const config = {
+      videoId: params.get("v"),
+      start: Number(params.get("s") || 15),
+      end: Number(params.get("e") || 40),
+      nextUrl: params.get("next") || "reveal.html?title=Unbekannt&year=?"
+    };
+
+    let player = null;
+    let playerReady = false;
+    let checkInterval = null;
+
+    function onYouTubeIframeAPIReady() {
+      if (!config.videoId) {
+        document.body.innerHTML = "<p style='color:white;text-align:center'>Kein Video angegeben.</p>";
+        return;
+      }
+
+      player = new YT.Player("player", {
+        videoId: config.videoId,
+        playerVars: {
+          start: config.start,
+          controls: 1,
+          rel: 0,
+          playsinline: 1
+        },
+        events: {
+          onReady: () => {
+            playerReady = true;
+          },
+          onStateChange: onPlayerStateChange
+        }
+      });
+    }
+
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) {
+        if (checkInterval) clearInterval(checkInterval);
+
+        checkInterval = setInterval(() => {
+          const t = player.getCurrentTime();
+
+          if (t >= config.end) {
+            clearInterval(checkInterval);
+            player.pauseVideo();
+
+            setTimeout(() => {
+              window.location.href = config.nextUrl;
+            }, 500);
+          }
+        }, 200);
+      }
+
+      if (event.data === YT.PlayerState.ENDED) {
+        clearInterval(checkInterval);
+        window.location.href = config.nextUrl;
+      }
+    }
+
+    document.getElementById("startBtn").addEventListener("click", () => {
+      if (!playerReady) return;
+      player.seekTo(config.start, true);
+      player.playVideo();
+      document.getElementById("startBtn").style.display = "none";
+    });
+  </script>
+</body>
+</html>
