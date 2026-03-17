@@ -373,7 +373,57 @@
     }
 
     function createPlayerAndPlay() {
-      if (!ytReady || !currentMovie) return;
+  if (!currentMovie) return;
+
+  // warten bis YouTube API ready ist (wichtig für iPhone)
+  if (!ytReady) {
+    playerStatus.textContent = "Player wird vorbereitet...";
+    setTimeout(createPlayerAndPlay, 300);
+    return;
+  }
+
+  playerWrap.style.display = "block";
+  playerStatus.textContent = "Trailer wird geladen ...";
+
+  player = new YT.Player("player", {
+    videoId: currentMovie.videoId,
+    playerVars: {
+      start: DEFAULT_START,
+      controls: 0,
+      rel: 0,
+      playsinline: 1,
+      modestbranding: 1,
+      fs: 0,
+      disablekb: 1
+    },
+    events: {
+      onReady: function () {
+        playerStatus.textContent = "";
+        player.seekTo(DEFAULT_START, true);
+        player.playVideo();
+      },
+      onStateChange: function (event) {
+        if (event.data === YT.PlayerState.PLAYING) {
+          if (stopCheck) clearInterval(stopCheck);
+
+          stopCheck = setInterval(() => {
+            const t = player.getCurrentTime();
+
+            if (t >= DEFAULT_END) {
+              clearInterval(stopCheck);
+              stopCheck = null;
+              player.pauseVideo();
+
+              setTimeout(() => {
+                backToScanner();
+              }, 700);
+            }
+          }, 200);
+        }
+      }
+    }
+  });
+}
 
       playerWrap.style.display = "block";
       playerStatus.textContent = "Trailer wird geladen ...";
