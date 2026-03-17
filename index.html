@@ -61,10 +61,6 @@
       cursor: pointer;
     }
 
-    #scan-btn {
-      margin-top: 8px;
-    }
-
     #reader {
       width: 100%;
       max-width: 520px;
@@ -95,7 +91,6 @@
       display: none;
     }
 
-    /* Oberen Bereich abschneiden, damit YouTube-Titel möglichst verborgen bleibt */
     #player {
       position: absolute;
       left: 0;
@@ -152,13 +147,8 @@
   <script src="https://www.youtube.com/iframe_api"></script>
 
   <script>
-    /*
-      Hier deine Filme eintragen.
-      Format:
-      "m001": { videoId: "YOUTUBE_ID" },
-    */
     const MOVIES = {
-"m001": { videoId: "aNQqoExfQsg&t" },
+     "m001": { videoId: "aNQqoExfQsg&t" },
 "m002": { videoId: "I7c1etV7D7g" },
 "m003": { videoId: "_jKEqDKpJLw" },
 "m004": { videoId: "5iaYLCiq5RM" },
@@ -235,7 +225,6 @@
 "m075": { videoId: "DSCKfXpAGHc" },
 "m076": { videoId: "3-ZP95NF_Wk" },
 "m077": { videoId: "AcHasH-nLhU" }
-
     };
 
     const DEFAULT_START = 25;
@@ -243,58 +232,77 @@
 
     const scanScreen = document.getElementById("scan-screen");
     const playScreen = document.getElementById("play-screen");
-    const readerEl = document.getElementById("reader");
-    const scanStatus = document.getElementById("scan-status");
-    const playerStatus = document.getElementById("player-status");
     const scanBtn = document.getElementById("scan-btn");
     const startBtn = document.getElementById("start-btn");
+    const readerEl = document.getElementById("reader");
+    const scanStatus = document.getElementById("scan-status");
     const playerWrap = document.getElementById("player-wrap");
+    const playerStatus = document.getElementById("player-status");
     const currentCodeEl = document.getElementById("current-code");
 
     let html5QrCode = null;
     let scannerRunning = false;
-    let isHandlingScan = false;
+    let handlingScan = false;
 
-    let player = null;
     let ytReady = false;
+    let player = null;
+    let stopCheck = null;
     let currentMovie = null;
     let currentCode = null;
-    let stopCheck = null;
+    let pendingPlayAfterReady = false;
 
     function showScreen(name) {
       scanScreen.classList.toggle("active", name === "scan");
       playScreen.classList.toggle("active", name === "play");
     }
 
+    function resetScanScreen() {
+      readerEl.style.display = "none";
+      scanBtn.style.display = "inline-block";
+      scanStatus.textContent = "";
+    }
+
     function onYouTubeIframeAPIReady() {
       ytReady = true;
+      if (pendingPlayAfterReady && currentMovie) {
+        pendingPlayAfterReady = false;
+        createPlayerAndPlay();
+      }
     }
     window.onYouTubeIframeAPIReady = onYouTubeIframeAPIReady;
 
-    async function startScanner() {
+    async function ensureScanner() {
       if (!html5QrCode) {
         html5QrCode = new Html5Qrcode("reader");
       }
+    }
 
+    async function startScanner() {
+      await ensureScanner();
       if (scannerRunning) return;
 
       readerEl.style.display = "block";
       scanBtn.style.display = "none";
+      scanStatus.textContent = "Kamera wird gestartet ...";
 
       try {
-        scanStatus.textContent = "Kamera aktiv. QR-Code scannen.";
-
         await html5QrCode.start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 220, height: 220 } },
+          {
+            fps: 10,
+            qrbox: { width: 220, height: 220 },
+            aspectRatio: 1.0
+          },
           onScanSuccess,
           () => {}
         );
 
         scannerRunning = true;
+        scanStatus.textContent = "Kamera aktiv. QR-Code scannen.";
       } catch (err) {
-        console.error(err);
-        scanStatus.textContent = "Kamera konnte nicht gestartet werden. Prüfe die Browser-Berechtigung.";
+        console.error("Scanner start error:", err);
+        scanStatus.textContent = "Kamera konnte nicht gestartet werden. Prüfe Safari-Berechtigungen.";
+        readerEl.style.display = "none";
         scanBtn.style.display = "inline-block";
       }
     }
@@ -305,39 +313,39 @@
       try {
         await html5QrCode.stop();
       } catch (err) {
-        console.error(err);
+        console.error("Scanner stop error:", err);
       }
 
       scannerRunning = false;
     }
 
     async function onScanSuccess(decodedText) {
-      if (isHandlingScan) return;
+      if (handlingScan) return;
+      handlingScan = true;
 
       const code = decodedText.trim();
       const movie = MOVIES[code];
 
       if (!movie) {
         scanStatus.textContent = `Unbekannter Code: ${code}`;
+        handlingScan = false;
         return;
       }
 
-      isHandlingScan = true;
       currentMovie = movie;
       currentCode = code;
-
       scanStatus.textContent = `Karte erkannt: ${code}`;
 
       await stopScanner();
 
       readerEl.style.display = "none";
-      playerWrap.style.display = "none";
       startBtn.style.display = "inline-block";
+      playerWrap.style.display = "none";
       playerStatus.textContent = "";
       currentCodeEl.textContent = `Code: ${code}`;
 
       showScreen("play");
-      isHandlingScan = false;
+      handlingScan = false;
     }
 
     function destroyPlayer() {
@@ -354,12 +362,6 @@
       document.getElementById("player").innerHTML = "";
     }
 
-    function resetScanScreen() {
-      readerEl.style.display = "none";
-      scanBtn.style.display = "inline-block";
-      scanStatus.textContent = "";
-    }
-
     function backToScanner() {
       destroyPlayer();
       currentMovie = null;
@@ -373,58 +375,15 @@
     }
 
     function createPlayerAndPlay() {
-  if (!currentMovie) return;
+      if (!currentMovie) return;
 
-  // warten bis YouTube API ready ist (wichtig für iPhone)
-  if (!ytReady) {
-    playerStatus.textContent = "Player wird vorbereitet...";
-    setTimeout(createPlayerAndPlay, 300);
-    return;
-  }
-
-  playerWrap.style.display = "block";
-  playerStatus.textContent = "Trailer wird geladen ...";
-
-  player = new YT.Player("player", {
-    videoId: currentMovie.videoId,
-    playerVars: {
-      start: DEFAULT_START,
-      controls: 0,
-      rel: 0,
-      playsinline: 1,
-      modestbranding: 1,
-      fs: 0,
-      disablekb: 1
-    },
-    events: {
-      onReady: function () {
-        playerStatus.textContent = "";
-        player.seekTo(DEFAULT_START, true);
-        player.playVideo();
-      },
-      onStateChange: function (event) {
-        if (event.data === YT.PlayerState.PLAYING) {
-          if (stopCheck) clearInterval(stopCheck);
-
-          stopCheck = setInterval(() => {
-            const t = player.getCurrentTime();
-
-            if (t >= DEFAULT_END) {
-              clearInterval(stopCheck);
-              stopCheck = null;
-              player.pauseVideo();
-
-              setTimeout(() => {
-                backToScanner();
-              }, 700);
-            }
-          }, 200);
-        }
+      if (!ytReady) {
+        playerStatus.textContent = "Player wird vorbereitet ...";
+        pendingPlayAfterReady = true;
+        return;
       }
-    }
-  });
-}
 
+      pendingPlayAfterReady = false;
       playerWrap.style.display = "block";
       playerStatus.textContent = "Trailer wird geladen ...";
 
@@ -432,6 +391,7 @@
         videoId: currentMovie.videoId,
         playerVars: {
           start: DEFAULT_START,
+          autoplay: 1,
           controls: 0,
           rel: 0,
           playsinline: 1,
@@ -451,7 +411,6 @@
 
               stopCheck = setInterval(() => {
                 const t = player.getCurrentTime();
-
                 if (t >= DEFAULT_END) {
                   clearInterval(stopCheck);
                   stopCheck = null;
@@ -477,8 +436,8 @@
       });
     }
 
-    scanBtn.addEventListener("click", () => {
-      startScanner();
+    scanBtn.addEventListener("click", async () => {
+      await startScanner();
     });
 
     startBtn.addEventListener("click", () => {
