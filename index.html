@@ -91,7 +91,6 @@
       display: none;
     }
 
-    /* Player leicht nach oben verschoben, damit Titelbereich abgeschnitten wird */
     #player {
       position: absolute;
       left: 0;
@@ -101,9 +100,6 @@
       z-index: 1;
     }
 
-    /* Schwarze Maske über dem Thumbnail.
-       In der Mitte bleibt nur ein kleiner Bereich offen,
-       damit der YouTube-Playbutton sichtbar und antippbar bleibt. */
     #thumb-mask {
       position: absolute;
       inset: 0;
@@ -171,7 +167,7 @@
 
   <script>
     const MOVIES = {
-"m001": { videoId: "Nq101UyQyTo" },
+      "m001": { videoId: "Nq101UyQyTo" },
 "m002": { videoId: "I7c1etV7D7g" },
 "m003": { videoId: "_jKEqDKpJLw" },
 "m004": { videoId: "5iaYLCiq5RM" },
@@ -270,9 +266,7 @@
 "m097": { videoId: "Ll3peqVgU3w" },
 "m098": { videoId: "JqnjK79fGSw" },
 "m099": { videoId: "4I8rVcSQbic" },
-"m100": { videoId: "4OtM9j2lcUA" },
-
-
+"m100": { videoId: "4OtM9j2lcUA" }
     };
 
     const DEFAULT_START = 25;
@@ -388,6 +382,9 @@
     function createPlayer() {
       destroyPlayer(false);
 
+      thumbMask.classList.remove("hidden");
+      playerStatus.textContent = "Tippe in der Mitte auf den Playbutton.";
+
       player = new YT.Player("player", {
         videoId: currentMovie.videoId,
         playerVars: {
@@ -403,27 +400,55 @@
         events: {
           onReady: function () {
             playerStatus.textContent = "Tippe in der Mitte auf den Playbutton.";
+
+            setTimeout(() => {
+              try {
+                player.seekTo(DEFAULT_START, true);
+              } catch (e) {
+                console.error("Seek failed onReady:", e);
+              }
+            }, 500);
           },
           onStateChange: function (event) {
             if (event.data === YT.PlayerState.PLAYING) {
-              thumbMask.classList.add("hidden");
-              playerStatus.textContent = "";
-
               if (stopCheck) clearInterval(stopCheck);
 
               stopCheck = setInterval(() => {
-                const t = player.getCurrentTime();
+                let t = 0;
 
+                try {
+                  t = player.getCurrentTime();
+                } catch (e) {
+                  console.error("CurrentTime read failed:", e);
+                  return;
+                }
+
+                // Maske erst weg, wenn das echte Video wirklich bei 25s angekommen ist
+                if (t >= DEFAULT_START) {
+                  thumbMask.classList.add("hidden");
+                  playerStatus.textContent = "";
+                }
+
+                // Bei 40s zurück zum Scanner
                 if (t >= DEFAULT_END) {
                   clearInterval(stopCheck);
                   stopCheck = null;
-                  player.pauseVideo();
+
+                  try {
+                    player.pauseVideo();
+                  } catch (e) {
+                    console.error("Pause failed:", e);
+                  }
 
                   setTimeout(() => {
                     backToScanner();
                   }, 700);
                 }
               }, 200);
+            }
+
+            if (event.data === YT.PlayerState.PAUSED) {
+              // nichts machen, weil auf iPhone oder bei Werbung pausiert werden kann
             }
 
             if (event.data === YT.PlayerState.ENDED) {
@@ -434,6 +459,10 @@
                 backToScanner();
               }, 700);
             }
+          },
+          onError: function (event) {
+            console.error("YouTube player error:", event.data);
+            playerStatus.textContent = "Video konnte nicht geladen werden.";
           }
         }
       });
